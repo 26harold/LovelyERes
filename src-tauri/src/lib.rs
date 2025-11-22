@@ -56,6 +56,29 @@ async fn close_window(window: tauri::Window) -> Result<(), String> {
     window.close().map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+async fn open_devtools(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri::Manager;
+    
+    // 获取主窗口
+    if let Some(window) = app.get_webview_window("main") {
+        #[cfg(debug_assertions)]
+        {
+            window.open_devtools();
+            println!("🐛 开发者工具已打开 (开发模式)");
+            Ok(())
+        }
+        #[cfg(not(debug_assertions))]
+        {
+            // 在生产环境中也允许打开开发者工具
+            window.open_devtools();
+            Ok(())
+        }
+    } else {
+        Err("无法找到主窗口".to_string())
+    }
+}
+
 // 主题管理命令
 #[tauri::command]
 async fn get_theme_settings(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
@@ -78,6 +101,7 @@ async fn set_current_theme(app: tauri::AppHandle, theme: String, state: State<'_
         eprintln!("发送主题变更事件失败: {}", e);
     }
 
+    #[cfg(debug_assertions)]
     println!("🎨 主题模式已更新为: {}", theme);
     Ok(())
 }
@@ -1555,7 +1579,7 @@ async fn ssh_get_connection_status(
 ) -> Result<Option<ssh_manager::SSHConnectionStatus>, String> {
     let manager = state.ssh_manager.lock().unwrap();
     let status = manager.get_connection_status().cloned();
-    println!("🔍 前端请求SSH连接状态: {:?}", status);
+    //println!("🔍 前端请求SSH连接状态: {:?}", status);
     Ok(status)
 }
 
@@ -1724,6 +1748,7 @@ pub fn run() {
             minimize_window,
             toggle_maximize,
             close_window,
+            open_devtools,
             // 主题管理
             get_theme_settings,
             set_current_theme,

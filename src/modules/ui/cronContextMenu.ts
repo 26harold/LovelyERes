@@ -461,7 +461,7 @@ export class CronContextMenu {
         select.appendChild(option)
       })
 
-      console.log(`✅ 计划任务右键菜单加载了 ${this.accounts.length} 个账号`)
+      //console.log(`✅ 计划任务右键菜单加载了 ${this.accounts.length} 个账号`)
     } catch (error) {
       console.error('❌ 计划任务右键菜单加载账号列表失败:', error)
     }

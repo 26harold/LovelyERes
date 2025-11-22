@@ -280,6 +280,11 @@ export class ModernUIRenderer {
         </div>
 
         <div class="title-bar-right">
+          <!-- Debug按钮 -->
+          <button class="debug-btn modern-btn secondary" style="padding: 6px 12px; font-size: 11px; margin-right: var(--spacing-sm);" title="打开开发者工具" onclick="window.toggleDevTools()">
+            🐛 Debug
+          </button>
+          
           <!-- 设置按钮 -->
           ${this.renderUserAvatar()}
           
@@ -317,11 +322,6 @@ export class ModernUIRenderer {
   renderSidebar(): string {
     return `
       <div class="modern-sidebar">
-        <!-- 顶部标题 -->
-        <div class="sidebar-title-area">
-            <div class="sidebar-title">LovelyRes</div>
-        </div>
-
         <div class="sidebar-content">
           ${this.renderNavigationMenu()}
         </div>
@@ -813,6 +813,23 @@ export class ModernUIRenderer {
             网络连接详情
           </span>
           <div class="search-container">
+            <select
+              id="network-filter"
+              class="system-select"
+              style="width: 120px;"
+              onchange="window.filterTableByCategory('network', this.value)"
+            >
+              <option value="">所有状态</option>
+              <option value="LISTEN">LISTEN</option>
+              <option value="ESTABLISHED">ESTABLISHED</option>
+              <option value="TIME_WAIT">TIME_WAIT</option>
+              <option value="CLOSE_WAIT">CLOSE_WAIT</option>
+              <option value="SYN_SENT">SYN_SENT</option>
+              <option value="SYN_RECV">SYN_RECV</option>
+              <option value="FIN_WAIT1">FIN_WAIT1</option>
+              <option value="FIN_WAIT2">FIN_WAIT2</option>
+              <option value="CLOSED">CLOSED</option>
+            </select>
             <input
               type="text"
               id="network-search"
@@ -823,7 +840,7 @@ export class ModernUIRenderer {
             />
             <button
               class="system-btn"
-              onclick="document.getElementById('network-search').value = ''; window.filterTable('network', '');"
+              onclick="document.getElementById('network-search').value = ''; document.getElementById('network-filter').value = ''; window.filterTable('network', '');"
             >清除</button>
           </div>
         </div>
@@ -2668,7 +2685,7 @@ export class ModernUIRenderer {
         </div>
 
         <div class="status-right">
-          <span>LovelyRes v0.53</span>
+          <span>LovelyRes v0.53.1</span>
         </div>
       </div>
     `;

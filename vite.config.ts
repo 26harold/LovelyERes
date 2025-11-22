@@ -116,7 +116,7 @@ export default defineConfig(async () => ({
         deadCodeInjection: false, // 不注入死代码（可能破坏代码）
         debugProtection: false, // 不启用调试保护（可能影响开发）
         debugProtectionInterval: 0,
-        disableConsoleOutput: true, // 禁用 console 输出
+        disableConsoleOutput: false, // 允许 console 输出
         identifierNamesGenerator: 'hexadecimal', // 使用十六进制标识符
         log: false,
         numbersToExpressions: false, // 不转换数字为表达式（可能破坏代码）

@@ -492,7 +492,7 @@ export class UserContextMenu {
         select.appendChild(option)
       })
 
-      console.log(`✅ 用户右键菜单加载了 ${this.accounts.length} 个账号`)
+      //console.log(`✅ 用户右键菜单加载了 ${this.accounts.length} 个账号`)
     } catch (error) {
       console.error('❌ 用户右键菜单加载账号列表失败:', error)
     }

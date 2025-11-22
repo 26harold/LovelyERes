@@ -1645,6 +1645,11 @@ function setupGlobalModalFunctions(app: LovelyResApp) {
         const statusCell = cells[1];
         return statusCell ? statusCell.textContent?.toLowerCase().includes(filterValue) || false : false;
 
+      case 'network':
+        // 按状态筛选（第四列是状态）
+        const netStatusCell = cells[3];
+        return netStatusCell ? netStatusCell.textContent?.toLowerCase().includes(filterValue) || false : false;
+
       case 'users':
         // 按Shell筛选（第五列是Shell）
         const shellCell = cells[4];
@@ -1711,6 +1716,19 @@ function setupGlobalModalFunctions(app: LovelyResApp) {
       }
     } catch (error) {
       console.error('❌ 刷新侧边栏失败:', error);
+    }
+  };
+
+  // 切换开发者工具
+  (window as any).toggleDevTools = async () => {
+    try {
+      // 调用 Rust 后端命令打开开发者工具
+      await (window as any).__TAURI__.core.invoke('open_devtools');
+      console.log('✅ 开发者工具已打开');
+      (window as any).showNotification && (window as any).showNotification('开发者工具已打开', 'success');
+    } catch (error) {
+      console.error('❌ 打开开发者工具失败:', error);
+      (window as any).showNotification && (window as any).showNotification(`打开开发者工具失败: ${error}`, 'error');
     }
   };
 
@@ -2732,7 +2750,7 @@ function setupGlobalModalFunctions(app: LovelyResApp) {
       userFilter.value = currentValue; // 保持当前选择
     }
 
-    tbody.innerHTML = processes.map((process, index) => `
+    tbody.innerHTML = processes.map((process) => `
       <tr data-pid="${process.pid}" class="process-row" style="
         border-bottom: 1px solid var(--border-color);
         cursor: context-menu;
@@ -2786,7 +2804,7 @@ function setupGlobalModalFunctions(app: LovelyResApp) {
       return;
     }
 
-    tbody.innerHTML = networkDetails.map((conn, index) => `
+    tbody.innerHTML = networkDetails.map((conn) => `
       <tr class="network-row" data-protocol="${conn.protocol}" data-local="${conn.localAddress}" data-foreign="${conn.foreignAddress}" data-state="${conn.state}" data-pid="${conn.pid || '-'}" data-process="${conn.process}" style="
         border-bottom: 1px solid var(--border-color);
         cursor: context-menu;
@@ -2856,7 +2874,7 @@ function setupGlobalModalFunctions(app: LovelyResApp) {
       statusFilter.value = currentValue; // 保持当前选择
     }
 
-    tbody.innerHTML = services.map((service, index) => `
+    tbody.innerHTML = services.map((service) => `
       <tr data-service-name="${service.name}" style="
         border-bottom: 1px solid var(--border-color);
         cursor: context-menu;
@@ -2917,7 +2935,7 @@ function setupGlobalModalFunctions(app: LovelyResApp) {
       shellFilter.value = currentValue; // 保持当前选择
     }
 
-    tbody.innerHTML = users.map((user, index) => `
+    tbody.innerHTML = users.map((user) => `
       <tr data-username="${user.username}" style="
         border-bottom: 1px solid var(--border-color);
         cursor: context-menu;
@@ -2965,7 +2983,7 @@ function setupGlobalModalFunctions(app: LovelyResApp) {
       return;
     }
 
-    tbody.innerHTML = autostart.map((item, index) => `
+    tbody.innerHTML = autostart.map((item) => `
       <tr data-startup-name="${item.name}" data-startup-type="${item.type}" data-startup-path="${item.path || ''}" data-startup-command="${item.command}" style="
         border-bottom: 1px solid var(--border-color);
         cursor: context-menu;
@@ -3025,7 +3043,7 @@ function setupGlobalModalFunctions(app: LovelyResApp) {
       return;
     }
 
-    tbody.innerHTML = cronJobs.map((job, index) => `
+    tbody.innerHTML = cronJobs.map((job) => `
       <tr data-cron-user="${job.user}" data-cron-schedule="${job.schedule}" data-cron-command="${job.command}" data-cron-source="${job.source || ''}" style="
         border-bottom: 1px solid var(--border-color);
         cursor: context-menu;
@@ -3080,7 +3098,7 @@ function setupGlobalModalFunctions(app: LovelyResApp) {
       return;
     }
 
-    tbody.innerHTML = firewallRules.map((rule, index) => `
+    tbody.innerHTML = firewallRules.map((rule) => `
       <tr data-chain="${rule.chain}" data-target="${rule.target}" data-protocol="${rule.protocol}" data-source="${rule.source}" data-destination="${rule.destination}" data-options="${rule.options}" style="
         border-bottom: 1px solid var(--border-color);
         cursor: context-menu;
