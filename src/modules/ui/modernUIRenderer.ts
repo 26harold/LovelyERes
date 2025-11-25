@@ -442,13 +442,13 @@ export class ModernUIRenderer {
       {
         id: 'kubernetes',
         icon: LinkCloud({ theme: 'outline', size: '18', fill: 'currentColor' }),
-        title: 'K8s管理',
+        title: 'K8s管理(不可用)',
         active: currentPage === 'kubernetes'
       },
       {
         id: 'database',
         icon: Data({ theme: 'outline', size: '18', fill: 'currentColor' }),
-        title: '数据库',
+        title: '数据库(不可用)',
         active: currentPage === 'database'
       },
       {
@@ -2759,7 +2759,7 @@ export class ModernUIRenderer {
         </div>
 
         <div class="status-right">
-          <span>LovelyRes v0.54.1</span>
+          <span>LovelyRes v0.55</span>
         </div>
       </div>
     `;

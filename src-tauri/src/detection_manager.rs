@@ -4,7 +4,7 @@
  */
 
 use serde::{Deserialize, Serialize};
-use crate::ssh_manager::SSHManager;
+use crate::ssh_manager_russh::SSHManagerRussh;
 
 // 端口信息
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -126,7 +126,7 @@ pub struct NetworkTestResult {
 }
 
 /// 端口安全扫描
-pub fn detect_port_scan(manager: &mut SSHManager) -> Result<PortScanResult, String> {
+pub fn detect_port_scan(manager: &mut SSHManagerRussh) -> Result<PortScanResult, String> {
     // 执行端口扫描命令
     let cmd = r#"
         # 扫描常见端口
@@ -167,7 +167,7 @@ pub fn detect_port_scan(manager: &mut SSHManager) -> Result<PortScanResult, Stri
 }
 
 /// 用户权限审计
-pub fn detect_user_audit(manager: &mut SSHManager) -> Result<UserAuditResult, String> {
+pub fn detect_user_audit(manager: &mut SSHManagerRussh) -> Result<UserAuditResult, String> {
     // 获取用户列表
     let cmd = "cat /etc/passwd";
     let passwd_result = manager.execute_command(cmd)
@@ -226,7 +226,7 @@ pub fn detect_user_audit(manager: &mut SSHManager) -> Result<UserAuditResult, St
 }
 
 /// 后门检测
-pub fn detect_backdoor(manager: &mut SSHManager) -> Result<BackdoorScanResult, String> {
+pub fn detect_backdoor(manager: &mut SSHManagerRussh) -> Result<BackdoorScanResult, String> {
     // 检查可疑的计划任务
     let cron_cmd = r#"
         (crontab -l 2>/dev/null; sudo crontab -l 2>/dev/null; cat /etc/crontab 2>/dev/null) | \
@@ -293,7 +293,7 @@ pub fn detect_backdoor(manager: &mut SSHManager) -> Result<BackdoorScanResult, S
 }
 
 /// 进程分析
-pub fn detect_process_analysis(manager: &mut SSHManager) -> Result<ProcessAnalysisResult, String> {
+pub fn detect_process_analysis(manager: &mut SSHManagerRussh) -> Result<ProcessAnalysisResult, String> {
     // 获取进程列表
     let cmd = "ps aux | head -50";
     let output_result = manager.execute_command(cmd)
@@ -338,7 +338,7 @@ pub fn detect_process_analysis(manager: &mut SSHManager) -> Result<ProcessAnalys
 }
 
 /// 文件权限检测
-pub fn detect_file_permission(manager: &mut SSHManager) -> Result<FilePermissionResult, String> {
+pub fn detect_file_permission(manager: &mut SSHManagerRussh) -> Result<FilePermissionResult, String> {
     // 查找 SUID 文件
     let suid_cmd = "find / -perm -4000 -type f 2>/dev/null | head -20";
     let suid_output = manager.execute_command(suid_cmd)
@@ -377,7 +377,7 @@ pub fn detect_file_permission(manager: &mut SSHManager) -> Result<FilePermission
 }
 
 /// SSH 安全审计
-pub fn detect_ssh_audit(manager: &mut SSHManager) -> Result<SSHAuditResult, String> {
+pub fn detect_ssh_audit(manager: &mut SSHManagerRussh) -> Result<SSHAuditResult, String> {
     // 读取 SSH 配置
     let cmd = "cat /etc/ssh/sshd_config 2>/dev/null | grep -v '^#' | grep -v '^$'";
     let output = manager.execute_command(cmd)
@@ -409,13 +409,13 @@ pub fn detect_ssh_audit(manager: &mut SSHManager) -> Result<SSHAuditResult, Stri
 }
 
 /// 日志分析
-pub fn detect_log_analysis(manager: &mut SSHManager) -> Result<LogAnalysisResult, String> {
+pub fn detect_log_analysis(manager: &mut SSHManagerRussh) -> Result<LogAnalysisResult, String> {
     // 检查暴力破解尝试
     let brute_force_cmd = r#"
         grep -i 'failed password' /var/log/auth.log /var/log/secure 2>/dev/null | wc -l
     "#;
     let brute_force_count_result = manager.execute_command(brute_force_cmd)
-        .unwrap_or_else(|_| crate::ssh_manager::TerminalOutput {
+        .unwrap_or_else(|_| crate::ssh_manager_russh::TerminalOutput {
             command: brute_force_cmd.to_string(),
             output: "0".to_string(),
             exit_code: Some(0),
@@ -462,7 +462,7 @@ pub fn detect_log_analysis(manager: &mut SSHManager) -> Result<LogAnalysisResult
 }
 
 /// 防火墙检查
-pub fn detect_firewall_check(manager: &mut SSHManager) -> Result<FirewallCheckResult, String> {
+pub fn detect_firewall_check(manager: &mut SSHManagerRussh) -> Result<FirewallCheckResult, String> {
     // 检查防火墙状态
     let status_cmd = r#"
         systemctl is-active iptables firewalld ufw 2>/dev/null | grep -q 'active' && echo 'active' || echo 'inactive'
@@ -496,7 +496,7 @@ pub fn detect_firewall_check(manager: &mut SSHManager) -> Result<FirewallCheckRe
 }
 
 /// CPU 测试
-pub fn detect_cpu_test(manager: &mut SSHManager) -> Result<CpuTestResult, String> {
+pub fn detect_cpu_test(manager: &mut SSHManagerRussh) -> Result<CpuTestResult, String> {
     // 获取 CPU 信息
     let cmd = r#"
         echo "cores:$(nproc)"
@@ -534,7 +534,7 @@ pub fn detect_cpu_test(manager: &mut SSHManager) -> Result<CpuTestResult, String
 }
 
 /// 内存测试
-pub fn detect_memory_test(manager: &mut SSHManager) -> Result<MemoryTestResult, String> {
+pub fn detect_memory_test(manager: &mut SSHManagerRussh) -> Result<MemoryTestResult, String> {
     // 获取内存信息
     let cmd = "free -m | grep Mem";
     let output_result = manager.execute_command(cmd)
@@ -565,7 +565,7 @@ pub fn detect_memory_test(manager: &mut SSHManager) -> Result<MemoryTestResult, 
 }
 
 /// 磁盘测试
-pub fn detect_disk_test(manager: &mut SSHManager) -> Result<DiskTestResult, String> {
+pub fn detect_disk_test(manager: &mut SSHManagerRussh) -> Result<DiskTestResult, String> {
     // 简化版磁盘测试 - 使用 dd 命令
     let cmd = r#"
         dd if=/dev/zero of=/tmp/test_disk_speed bs=1M count=100 2>&1 | grep copied | awk '{print $(NF-1)}'
@@ -584,7 +584,7 @@ pub fn detect_disk_test(manager: &mut SSHManager) -> Result<DiskTestResult, Stri
 }
 
 /// 网络测试
-pub fn detect_network_test(manager: &mut SSHManager) -> Result<NetworkTestResult, String> {
+pub fn detect_network_test(manager: &mut SSHManagerRussh) -> Result<NetworkTestResult, String> {
     // 测试延迟
     let ping_cmd = "ping -c 3 8.8.8.8 2>/dev/null | grep 'avg' | awk -F'/' '{print $5}'";
     let ping_output = manager.execute_command(ping_cmd)
@@ -653,7 +653,7 @@ pub struct GenericDetectionResult {
 // ========== 新增基线检测函数 ==========
 
 /// 密码策略检查
-pub fn detect_password_policy(manager: &mut SSHManager) -> Result<GenericDetectionResult, String> {
+pub fn detect_password_policy(manager: &mut SSHManagerRussh) -> Result<GenericDetectionResult, String> {
     let mut issues = Vec::new();
 
     // 检查 /etc/login.defs 中的密码策略
@@ -686,7 +686,7 @@ pub fn detect_password_policy(manager: &mut SSHManager) -> Result<GenericDetecti
 }
 
 /// Sudo 配置审计
-pub fn detect_sudo_config(manager: &mut SSHManager) -> Result<GenericDetectionResult, String> {
+pub fn detect_sudo_config(manager: &mut SSHManagerRussh) -> Result<GenericDetectionResult, String> {
     let mut issues = Vec::new();
 
     // 检查 sudoers 文件中的 NOPASSWD 配置
@@ -708,7 +708,7 @@ pub fn detect_sudo_config(manager: &mut SSHManager) -> Result<GenericDetectionRe
 }
 
 /// PAM 配置检查
-pub fn detect_pam_config(manager: &mut SSHManager) -> Result<GenericDetectionResult, String> {
+pub fn detect_pam_config(manager: &mut SSHManagerRussh) -> Result<GenericDetectionResult, String> {
     let mut issues = Vec::new();
 
     // 检查 PAM 密码复杂度模块
@@ -730,7 +730,7 @@ pub fn detect_pam_config(manager: &mut SSHManager) -> Result<GenericDetectionRes
 }
 
 /// 账号锁定策略检查
-pub fn detect_account_lockout(manager: &mut SSHManager) -> Result<GenericDetectionResult, String> {
+pub fn detect_account_lockout(manager: &mut SSHManagerRussh) -> Result<GenericDetectionResult, String> {
     let mut issues = Vec::new();
 
     // 检查 PAM 账号锁定模块
@@ -752,7 +752,7 @@ pub fn detect_account_lockout(manager: &mut SSHManager) -> Result<GenericDetecti
 }
 
 /// SELinux/AppArmor 状态检查
-pub fn detect_selinux_status(manager: &mut SSHManager) -> Result<GenericDetectionResult, String> {
+pub fn detect_selinux_status(manager: &mut SSHManagerRussh) -> Result<GenericDetectionResult, String> {
     let mut issues = Vec::new();
 
     // 检查 SELinux 状态
@@ -787,7 +787,7 @@ pub fn detect_selinux_status(manager: &mut SSHManager) -> Result<GenericDetectio
 }
 
 /// 内核参数检查
-pub fn detect_kernel_params(manager: &mut SSHManager) -> Result<GenericDetectionResult, String> {
+pub fn detect_kernel_params(manager: &mut SSHManagerRussh) -> Result<GenericDetectionResult, String> {
     let mut issues = Vec::new();
 
     // 检查关键的安全内核参数
@@ -818,7 +818,7 @@ pub fn detect_kernel_params(manager: &mut SSHManager) -> Result<GenericDetection
 }
 
 /// 系统补丁状态检查
-pub fn detect_system_updates(manager: &mut SSHManager) -> Result<GenericDetectionResult, String> {
+pub fn detect_system_updates(manager: &mut SSHManagerRussh) -> Result<GenericDetectionResult, String> {
     let mut issues = Vec::new();
 
     // 检查可用更新（根据不同发行版）
@@ -850,7 +850,7 @@ pub fn detect_system_updates(manager: &mut SSHManager) -> Result<GenericDetectio
 }
 
 /// 不必要服务检查
-pub fn detect_unnecessary_services(manager: &mut SSHManager) -> Result<GenericDetectionResult, String> {
+pub fn detect_unnecessary_services(manager: &mut SSHManagerRussh) -> Result<GenericDetectionResult, String> {
     let mut issues = Vec::new();
 
     // 定义常见的不必要服务
@@ -876,7 +876,7 @@ pub fn detect_unnecessary_services(manager: &mut SSHManager) -> Result<GenericDe
 }
 
 /// 自启动服务审计
-pub fn detect_auto_start_services(manager: &mut SSHManager) -> Result<GenericDetectionResult, String> {
+pub fn detect_auto_start_services(manager: &mut SSHManagerRussh) -> Result<GenericDetectionResult, String> {
     let mut issues = Vec::new();
 
     // 获取所有启用的服务
@@ -898,7 +898,7 @@ pub fn detect_auto_start_services(manager: &mut SSHManager) -> Result<GenericDet
 }
 
 /// 审计配置检查
-pub fn detect_audit_config(manager: &mut SSHManager) -> Result<GenericDetectionResult, String> {
+pub fn detect_audit_config(manager: &mut SSHManagerRussh) -> Result<GenericDetectionResult, String> {
     let mut issues = Vec::new();
 
     // 检查 auditd 服务状态
@@ -920,7 +920,7 @@ pub fn detect_audit_config(manager: &mut SSHManager) -> Result<GenericDetectionR
 }
 
 /// 历史命令审计
-pub fn detect_history_audit(manager: &mut SSHManager) -> Result<GenericDetectionResult, String> {
+pub fn detect_history_audit(manager: &mut SSHManagerRussh) -> Result<GenericDetectionResult, String> {
     let mut issues = Vec::new();
 
     // 检查可疑的历史命令
@@ -946,7 +946,7 @@ pub fn detect_history_audit(manager: &mut SSHManager) -> Result<GenericDetection
 }
 
 /// NTP 配置检查
-pub fn detect_ntp_config(manager: &mut SSHManager) -> Result<GenericDetectionResult, String> {
+pub fn detect_ntp_config(manager: &mut SSHManagerRussh) -> Result<GenericDetectionResult, String> {
     let mut issues = Vec::new();
 
     // 检查时间同步服务
@@ -970,7 +970,7 @@ pub fn detect_ntp_config(manager: &mut SSHManager) -> Result<GenericDetectionRes
 }
 
 /// DNS 配置检查
-pub fn detect_dns_config(manager: &mut SSHManager) -> Result<GenericDetectionResult, String> {
+pub fn detect_dns_config(manager: &mut SSHManagerRussh) -> Result<GenericDetectionResult, String> {
     let mut issues = Vec::new();
 
     // 检查 DNS 配置

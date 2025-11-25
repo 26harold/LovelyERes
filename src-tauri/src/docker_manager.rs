@@ -1,4 +1,4 @@
-use crate::ssh_manager::{SSHManager, TerminalOutput};
+use crate::ssh_manager_russh::{SSHManagerRussh, TerminalOutput};
 use crate::types::{
     DockerActionResult,
     DockerContainerSummary,
@@ -28,7 +28,7 @@ impl DockerManager {
     /// 获取容器列表并汇总统计信息
     pub fn list_containers(
         &self,
-        ssh: &mut SSHManager,
+        ssh: &mut SSHManagerRussh,
     ) -> LovelyResResult<Vec<DockerContainerSummary>> {
         if !ssh.is_connected() {
             return Err(LovelyResError::ConnectionError(
@@ -82,7 +82,7 @@ impl DockerManager {
     /// 对容器执行 start/stop 等操作
     pub fn perform_action(
         &self,
-        ssh: &mut SSHManager,
+        ssh: &mut SSHManagerRussh,
         container_ref: &str,
         action: &str,
     ) -> LovelyResResult<DockerActionResult> {
@@ -119,7 +119,7 @@ impl DockerManager {
     /// 获取容器日志
     pub fn get_logs(
         &self,
-        ssh: &mut SSHManager,
+        ssh: &mut SSHManagerRussh,
         container_ref: &str,
         options: Option<DockerLogsOptions>,
     ) -> LovelyResResult<String> {
@@ -156,7 +156,7 @@ impl DockerManager {
     /// 获取容器 inspect 原始数据
     pub fn inspect(
         &self,
-        ssh: &mut SSHManager,
+        ssh: &mut SSHManagerRussh,
         container_ref: &str,
     ) -> LovelyResResult<Value> {
         self.fetch_inspect_raw(ssh, container_ref)
@@ -165,7 +165,7 @@ impl DockerManager {
     /// 读取容器内文件
     pub fn read_file(
         &self,
-        ssh: &mut SSHManager,
+        ssh: &mut SSHManagerRussh,
         container_ref: &str,
         path: &str,
     ) -> LovelyResResult<String> {
@@ -185,7 +185,7 @@ impl DockerManager {
     /// 在容器内执行命令
     pub fn exec_command(
         &self,
-        ssh: &mut SSHManager,
+        ssh: &mut SSHManagerRussh,
         container_ref: &str,
         command: &str,
         shell: &str,
@@ -219,7 +219,7 @@ impl DockerManager {
     /// 写入容器内文件
     pub fn write_file(
         &self,
-        ssh: &mut SSHManager,
+        ssh: &mut SSHManagerRussh,
         container_ref: &str,
         path: &str,
         content: &str,
@@ -229,7 +229,8 @@ impl DockerManager {
         }
 
         let temp_path = generate_temp_path();
-        ssh.write_sftp_file(&temp_path, content)?;
+        ssh.write_sftp_file(&temp_path, content.as_bytes())
+            .map_err(|e| LovelyResError::SSHError(e))?;
 
         if let Some(parent) = derive_parent_path(path) {
             let mkdir_inner = format!("mkdir -p {}", shell_quote(&parent));
@@ -267,7 +268,7 @@ impl DockerManager {
     /// 执行宿主机与容器之间的文件复制
     pub fn copy(
         &self,
-        ssh: &mut SSHManager,
+        ssh: &mut SSHManagerRussh,
         container_ref: &str,
         request: &DockerCopyRequest,
     ) -> LovelyResResult<DockerActionResult> {
@@ -335,7 +336,7 @@ impl DockerManager {
 
     fn fetch_stats_map(
         &self,
-        ssh: &mut SSHManager,
+        ssh: &mut SSHManagerRussh,
     ) -> LovelyResResult<HashMap<String, StatsSnapshot>> {
         let result = run_command(ssh, "docker stats --no-stream --format '{{json .}}'")?;
         if !is_success(&result) {
@@ -381,7 +382,7 @@ impl DockerManager {
 
     fn fetch_inspect_map(
         &self,
-        ssh: &mut SSHManager,
+        ssh: &mut SSHManagerRussh,
         rows: &[DockerPsRow],
     ) -> LovelyResResult<HashMap<String, DockerInspect>> {
         let mut refs = HashSet::new();
@@ -498,7 +499,7 @@ impl DockerManager {
 
     fn fetch_inspect(
         &self,
-        ssh: &mut SSHManager,
+        ssh: &mut SSHManagerRussh,
         container_ref: &str,
     ) -> LovelyResResult<DockerInspect> {
         let value = self.fetch_inspect_raw(ssh, container_ref)?;
@@ -512,7 +513,7 @@ impl DockerManager {
 
     fn fetch_inspect_raw(
         &self,
-        ssh: &mut SSHManager,
+        ssh: &mut SSHManagerRussh,
         container_ref: &str,
     ) -> LovelyResResult<Value> {
         let command = format!(
@@ -858,9 +859,10 @@ fn extract_mounts(inspect: &DockerInspect) -> Vec<DockerMountInfo> {
         .collect()
 }
 
-fn run_command(ssh: &mut SSHManager, command: &str) -> LovelyResResult<TerminalOutput> {
-    // 使用 Docker 专用的快速执行方法（使用仪表盘 session）
-    ssh.execute_docker_command(command)
+fn run_command(ssh: &mut SSHManagerRussh, command: &str) -> LovelyResResult<TerminalOutput> {
+    // 使用命令执行
+    ssh.execute_command(command)
+        .map_err(|e| LovelyResError::SSHError(e))
 }
 
 fn ensure_success(

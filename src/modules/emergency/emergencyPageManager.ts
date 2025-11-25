@@ -84,6 +84,10 @@ class EmergencyPageManager {
       console.log('⏭️ EmergencyPageManager 已初始化，跳过');
       // 即使已初始化，也重新加载账号列表（可能已更新）
       await this.loadAccountList();
+      // 重新显示系统信息（解决切换页面后显示"检测中..."的问题）
+      if (this.systemInfo) {
+        this.displaySystemInfo();
+      }
       return;
     }
 

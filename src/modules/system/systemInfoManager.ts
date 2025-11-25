@@ -591,31 +591,8 @@ export class SystemInfoManager {
       // 先尝试使用ss命令（显示所有TCP和UDP连接，包括监听和已建立的连接）
       // -t: TCP, -u: UDP, -a: 所有状态, -n: 数字格式, -p: 显示进程信息
       // ss输出格式: Netid State Recv-Q Send-Q Local_Address:Port Peer_Address:Port Process
-      // Process格式: users:(("进程名",pid=123,fd=4),("进程名2",pid=456,fd=5))
-      const ssResult = await this.executeCommand(`ss -tunap 2>/dev/null | grep -v "State\\|Netid" | awk 'BEGIN{OFS=","} {
-        state=$1;
-        local=$5;
-        foreign=$6;
-        # 从第7列开始是进程信息，使用substr获取剩余所有内容
-        process_start = index($0, $7);
-        if(process_start > 0) {
-          process = substr($0, process_start);
-          # 去除首尾空格
-          gsub(/^[ \\t]+|[ \\t]+$/, "", process);
-        } else {
-          process = "unknown";
-        }
-        # 提取PID（从 pid=123 格式中提取）
-        pid = "-";
-        if(match(process, /pid=([0-9]+)/, arr)) {
-          pid = arr[1];
-        }
-        # 如果没有进程信息，设置为unknown
-        if(process == "") {
-          process = "unknown";
-        }
-        print state,local,foreign,state,process,pid;
-      }'`);
+      // 使用简化的 awk 命令避免复杂引号嵌套导致的解析问题
+      const ssResult = await this.executeCommand(`ss -tunap 2>/dev/null | grep -v "State" | grep -v "Netid" | awk '{print $1","$5","$6","$1","$7",""-"}'`);
       if (ssResult && ssResult.trim()) {
         console.log('✅ 使用ss命令获取网络连接详情');
         console.log('📊 网络连接数据:', ssResult.split('\n').length, '条');
@@ -628,7 +605,8 @@ export class SystemInfoManager {
     try {
       // 如果ss命令失败，使用netstat命令
       // netstat输出格式: Proto Recv-Q Send-Q Local Address Foreign Address State [PID/Program]
-      const netstatResult = await this.executeCommand('netstat -tunap 2>/dev/null | grep -v "Active\\|Proto" | awk \'BEGIN{OFS=","} {proto=$1; local=$4; foreign=$5; state=$6; process=""; for(i=7;i<=NF;i++) process=process $i" "; gsub(/^[ \\t]+|[ \\t]+$/,"",process); if(state=="") state="LISTEN"; if(process=="") process="unknown"; print proto,local,foreign,state,process}\'');
+      // 使用简化的 awk 命令避免复杂引号嵌套导致的解析问题
+      const netstatResult = await this.executeCommand(`netstat -tunap 2>/dev/null | grep -v "Active" | grep -v "Proto" | awk '{print $1","$4","$5","$6","$7}'`);
       if (netstatResult && netstatResult.trim()) {
         console.log('✅ 使用netstat命令获取网络连接详情');
         console.log('📊 网络连接数据:', netstatResult.split('\n').length, '条');
@@ -640,7 +618,7 @@ export class SystemInfoManager {
 
     try {
       // 最后的fallback：使用简化的ss命令（不显示进程信息）
-      const simpleSsResult = await this.executeCommand('ss -tuna | grep -v "State\\|Netid" | awk \'BEGIN{OFS=","} {if(NF>=5) print $1,$5,$6,$1,"unknown"; else print "tcp","0.0.0.0:0","0.0.0.0:0","UNKNOWN","unknown"}\'');
+      const simpleSsResult = await this.executeCommand(`ss -tuna | grep -v "State" | grep -v "Netid" | awk '{print $1","$5","$6","$1",unknown"}'`);
       console.log('✅ 使用简化ss命令获取网络连接详情（无进程信息）');
       return simpleSsResult;
     } catch (error) {

@@ -4,7 +4,7 @@
 use crate::types::{LovelyResError, LovelyResResult, SSHCommand, SSHConnection};
 use crate::ssh_channel_manager::{SSHChannelManager, SSHHealthMonitor};
 use serde::{Deserialize, Serialize};
-use ssh2::Session;
+use ssh2::{Session, MethodType};
 use std::collections::HashMap;
 use std::fs;
 use std::io::prelude::*;
@@ -209,10 +209,89 @@ impl SSHManager {
         // 记录 TCP 副本
         self.current_tcp = tcp_clone;
 
+        // 配置支持的算法以提高兼容性，解决 "Unable to exchange encryption keys" 错误
+        // 显式启用旧算法和新算法，确保能连接到使用旧加密算法的服务器
+        println!("[SSH] 配置加密算法...");
+        
+        // 先打印当前支持的算法（握手前查询）
+        println!("[SSH] 尝试查询 libssh2 支持的算法...");
+        
+        // 密钥交换算法 - 使用 libssh2 实际支持的算法
+        // libssh2 1.9+ 支持 curve25519-sha256, ecdh-sha2-nistp256 等
+        // 注意: libssh2 可能不支持后量子算法(如 sntrup761x25519-sha512@openssh.com)
+        let kex_algorithms = "curve25519-sha256,curve25519-sha256@libssh.org,ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521,diffie-hellman-group-exchange-sha256,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512,diffie-hellman-group14-sha256,diffie-hellman-group14-sha1";
+        println!("[SSH] 尝试设置 KEX 算法: {}", kex_algorithms);
+        match session.method_pref(MethodType::Kex, kex_algorithms) {
+            Ok(_) => println!("[SSH] ✅ KEX算法配置成功"),
+            Err(e) => println!("[SSH] ⚠️ KEX算法配置失败: {} (将使用默认值)", e),
+        }
+        
+        // 主机密钥算法 - ssh-ed25519 是 OpenSSH 10 的首选
+        let hostkey_algorithms = "ssh-ed25519,ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,ecdsa-sha2-nistp521,rsa-sha2-512,rsa-sha2-256,ssh-rsa";
+        println!("[SSH] 尝试设置 HostKey 算法: {}", hostkey_algorithms);
+        match session.method_pref(MethodType::HostKey, hostkey_algorithms) {
+            Ok(_) => println!("[SSH] ✅ HostKey算法配置成功"),
+            Err(e) => println!("[SSH] ⚠️ HostKey算法配置失败: {} (将使用默认值)", e),
+        }
+        
+        // 客户端到服务器加密算法 - 优先使用 aes256-gcm 和 chacha20
+        let crypt_cs_algorithms = "aes256-gcm@openssh.com,chacha20-poly1305@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr,aes256-cbc,aes192-cbc,aes128-cbc";
+        println!("[SSH] 尝试设置 CryptCs 算法: {}", crypt_cs_algorithms);
+        match session.method_pref(MethodType::CryptCs, crypt_cs_algorithms) {
+            Ok(_) => println!("[SSH] ✅ CryptCs算法配置成功"),
+            Err(e) => println!("[SSH] ⚠️ CryptCs算法配置失败: {} (将使用默认值)", e),
+        }
+        
+        // 服务器到客户端加密算法
+        let crypt_sc_algorithms = "aes256-gcm@openssh.com,chacha20-poly1305@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr,aes256-cbc,aes192-cbc,aes128-cbc";
+        println!("[SSH] 尝试设置 CryptSc 算法: {}", crypt_sc_algorithms);
+        match session.method_pref(MethodType::CryptSc, crypt_sc_algorithms) {
+            Ok(_) => println!("[SSH] ✅ CryptSc算法配置成功"),
+            Err(e) => println!("[SSH] ⚠️ CryptSc算法配置失败: {} (将使用默认值)", e),
+        }
+        
+        // MAC算法 - ETM (Encrypt-then-MAC) 模式更安全
+        let mac_algorithms = "hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,hmac-sha2-256,hmac-sha2-512,hmac-sha1";
+        println!("[SSH] 尝试设置 MAC 算法: {}", mac_algorithms);
+        match session.method_pref(MethodType::MacCs, mac_algorithms) {
+            Ok(_) => println!("[SSH] ✅ MacCs算法配置成功"),
+            Err(e) => println!("[SSH] ⚠️ MacCs算法配置失败: {} (将使用默认值)", e),
+        }
+        match session.method_pref(MethodType::MacSc, mac_algorithms) {
+            Ok(_) => println!("[SSH] ✅ MacSc算法配置成功"),
+            Err(e) => println!("[SSH] ⚠️ MacSc算法配置失败: {} (将使用默认值)", e),
+        }
+
+        println!("[SSH] 开始SSH握手...");
         let _handshake_start = std::time::Instant::now();
-        session
-            .handshake()
-            .map_err(|e| LovelyResError::ConnectionError(format!("SSH握手失败: {}", e)))?;
+        match session.handshake() {
+            Ok(_) => {
+                println!("[SSH] ✅ SSH握手成功");
+                // 打印协商后的算法
+                if let Some(kex) = session.methods(MethodType::Kex) {
+                    println!("[SSH] 协商的KEX算法: {}", kex);
+                }
+                if let Some(hostkey) = session.methods(MethodType::HostKey) {
+                    println!("[SSH] 协商的HostKey算法: {}", hostkey);
+                }
+                if let Some(crypt_cs) = session.methods(MethodType::CryptCs) {
+                    println!("[SSH] 协商的加密算法(C->S): {}", crypt_cs);
+                }
+                if let Some(crypt_sc) = session.methods(MethodType::CryptSc) {
+                    println!("[SSH] 协商的加密算法(S->C): {}", crypt_sc);
+                }
+            }
+            Err(e) => {
+                println!("[SSH] ❌ SSH握手失败: {}", e);
+                println!("[SSH] 错误代码: {:?}", e.code());
+                println!("[SSH] 错误消息: {}", e.message());
+                // 尝试获取服务器的banner信息
+                if let Some(banner) = session.banner() {
+                    println!("[SSH] 服务器Banner: {}", banner);
+                }
+                return Err(LovelyResError::ConnectionError(format!("SSH握手失败: {}", e)));
+            }
+        }
         //println!("[PERF] SSH握手耗时: {:?}", handshake_start.elapsed());
 
         // 完全禁用 keepalive，避免干扰快速输入
@@ -315,6 +394,33 @@ impl SSHManager {
         let mut dashboard_session = Session::new()
             .map_err(|e| LovelyResError::ConnectionError(format!("创建仪表盘SSH会话失败: {}", e)))?;
         dashboard_session.set_tcp_stream(dashboard_tcp);
+        
+        // 配置支持的算法以提高兼容性
+        let _ = dashboard_session.method_pref(
+            MethodType::Kex,
+            "curve25519-sha256,curve25519-sha256@libssh.org,ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521,diffie-hellman-group-exchange-sha256,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512,diffie-hellman-group14-sha256,diffie-hellman-group14-sha1,diffie-hellman-group1-sha1,diffie-hellman-group-exchange-sha1"
+        );
+        let _ = dashboard_session.method_pref(
+            MethodType::HostKey,
+            "ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,ecdsa-sha2-nistp521,ssh-ed25519,rsa-sha2-512,rsa-sha2-256,ssh-rsa,ssh-dss"
+        );
+        let _ = dashboard_session.method_pref(
+            MethodType::CryptCs,
+            "chacha20-poly1305@openssh.com,aes128-gcm@openssh.com,aes256-gcm@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr,aes128-cbc,aes192-cbc,aes256-cbc,3des-cbc,blowfish-cbc,cast128-cbc,arcfour,arcfour128"
+        );
+        let _ = dashboard_session.method_pref(
+            MethodType::CryptSc,
+            "chacha20-poly1305@openssh.com,aes128-gcm@openssh.com,aes256-gcm@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr,aes128-cbc,aes192-cbc,aes256-cbc,3des-cbc,blowfish-cbc,cast128-cbc,arcfour,arcfour128"
+        );
+        let _ = dashboard_session.method_pref(
+            MethodType::MacCs,
+            "hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,hmac-sha1-etm@openssh.com,hmac-sha2-256,hmac-sha2-512,hmac-sha1,hmac-md5,hmac-sha1-96,hmac-md5-96,hmac-ripemd160,hmac-ripemd160@openssh.com"
+        );
+        let _ = dashboard_session.method_pref(
+            MethodType::MacSc,
+            "hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,hmac-sha1-etm@openssh.com,hmac-sha2-256,hmac-sha2-512,hmac-sha1,hmac-md5,hmac-sha1-96,hmac-md5-96,hmac-ripemd160,hmac-ripemd160@openssh.com"
+        );
+
         dashboard_session.handshake()
             .map_err(|e| LovelyResError::ConnectionError(format!("仪表盘SSH握手失败: {}", e)))?;
         let _ = dashboard_session.set_keepalive(false, 0);
@@ -525,6 +631,33 @@ impl SSHManager {
             .map_err(|e| LovelyResError::SSHError(format!("创建SSH会话失败: {}", e)))?;
 
         session.set_tcp_stream(tcp);
+        
+        // 配置支持的算法以提高兼容性
+        let _ = session.method_pref(
+            MethodType::Kex,
+            "curve25519-sha256,curve25519-sha256@libssh.org,ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521,diffie-hellman-group-exchange-sha256,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512,diffie-hellman-group14-sha256,diffie-hellman-group14-sha1,diffie-hellman-group1-sha1,diffie-hellman-group-exchange-sha1"
+        );
+        let _ = session.method_pref(
+            MethodType::HostKey,
+            "ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,ecdsa-sha2-nistp521,ssh-ed25519,rsa-sha2-512,rsa-sha2-256,ssh-rsa,ssh-dss"
+        );
+        let _ = session.method_pref(
+            MethodType::CryptCs,
+            "chacha20-poly1305@openssh.com,aes128-gcm@openssh.com,aes256-gcm@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr,aes128-cbc,aes192-cbc,aes256-cbc,3des-cbc,blowfish-cbc,cast128-cbc,arcfour,arcfour128"
+        );
+        let _ = session.method_pref(
+            MethodType::CryptSc,
+            "chacha20-poly1305@openssh.com,aes128-gcm@openssh.com,aes256-gcm@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr,aes128-cbc,aes192-cbc,aes256-cbc,3des-cbc,blowfish-cbc,cast128-cbc,arcfour,arcfour128"
+        );
+        let _ = session.method_pref(
+            MethodType::MacCs,
+            "hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,hmac-sha1-etm@openssh.com,hmac-sha2-256,hmac-sha2-512,hmac-sha1,hmac-md5,hmac-sha1-96,hmac-md5-96,hmac-ripemd160,hmac-ripemd160@openssh.com"
+        );
+        let _ = session.method_pref(
+            MethodType::MacSc,
+            "hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,hmac-sha1-etm@openssh.com,hmac-sha2-256,hmac-sha2-512,hmac-sha1,hmac-md5,hmac-sha1-96,hmac-md5-96,hmac-ripemd160,hmac-ripemd160@openssh.com"
+        );
+
         session.handshake()
             .map_err(|e| LovelyResError::SSHError(format!("SSH握手失败: {}", e)))?;
 
@@ -1116,6 +1249,33 @@ impl SSHManager {
             .map_err(|e| LovelyResError::SSHError(format!("创建SSH会话失败: {}", e)))?;
 
         session.set_tcp_stream(tcp);
+        
+        // 配置支持的算法以提高兼容性
+        let _ = session.method_pref(
+            MethodType::Kex,
+            "curve25519-sha256,curve25519-sha256@libssh.org,ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521,diffie-hellman-group-exchange-sha256,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512,diffie-hellman-group14-sha256,diffie-hellman-group14-sha1,diffie-hellman-group1-sha1,diffie-hellman-group-exchange-sha1"
+        );
+        let _ = session.method_pref(
+            MethodType::HostKey,
+            "ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,ecdsa-sha2-nistp521,ssh-ed25519,rsa-sha2-512,rsa-sha2-256,ssh-rsa,ssh-dss"
+        );
+        let _ = session.method_pref(
+            MethodType::CryptCs,
+            "chacha20-poly1305@openssh.com,aes128-gcm@openssh.com,aes256-gcm@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr,aes128-cbc,aes192-cbc,aes256-cbc,3des-cbc,blowfish-cbc,cast128-cbc,arcfour,arcfour128"
+        );
+        let _ = session.method_pref(
+            MethodType::CryptSc,
+            "chacha20-poly1305@openssh.com,aes128-gcm@openssh.com,aes256-gcm@openssh.com,aes128-ctr,aes192-ctr,aes256-ctr,aes128-cbc,aes192-cbc,aes256-cbc,3des-cbc,blowfish-cbc,cast128-cbc,arcfour,arcfour128"
+        );
+        let _ = session.method_pref(
+            MethodType::MacCs,
+            "hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,hmac-sha1-etm@openssh.com,hmac-sha2-256,hmac-sha2-512,hmac-sha1,hmac-md5,hmac-sha1-96,hmac-md5-96,hmac-ripemd160,hmac-ripemd160@openssh.com"
+        );
+        let _ = session.method_pref(
+            MethodType::MacSc,
+            "hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,hmac-sha1-etm@openssh.com,hmac-sha2-256,hmac-sha2-512,hmac-sha1,hmac-md5,hmac-sha1-96,hmac-md5-96,hmac-ripemd160,hmac-ripemd160@openssh.com"
+        );
+
         session.handshake()
             .map_err(|e| LovelyResError::SSHError(format!("SSH握手失败: {}", e)))?;
 

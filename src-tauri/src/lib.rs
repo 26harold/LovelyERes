@@ -9,17 +9,19 @@ pub mod docker_manager;
 pub mod file_analysis;
 pub mod log_analysis;
 pub mod settings;
-pub mod ssh_channel_manager;
-pub mod ssh_client;
 pub mod ssh_connection_manager;
-pub mod ssh_debug;
-pub mod ssh_flow_control;
-pub mod ssh_manager;
-pub mod ssh_thread_manager;
+pub mod ssh_manager_russh;  // 使用 russh 实现的 SSH 管理器
 pub mod theme_manager;
 pub mod types;
 pub mod window_manager;
 
+// 保留旧模块以兼容（暂时）
+pub mod ssh_channel_manager;
+pub mod ssh_client;
+pub mod ssh_debug;
+pub mod ssh_flow_control;
+pub mod ssh_manager;
+pub mod ssh_thread_manager;
 
 use std::sync::Mutex;
 use tauri::{Manager, State};
@@ -32,7 +34,7 @@ pub struct AppState {
     pub settings: Mutex<settings::AppSettings>,
     pub ssh_connection_manager: Mutex<ssh_connection_manager::SSHConnectionManager>,
     pub ssh_client: Mutex<ssh_client::SSHClient>,
-    pub ssh_manager: Mutex<ssh_manager::SSHManager>,
+    pub ssh_manager: Mutex<ssh_manager_russh::SSHManagerRussh>,  // 使用新的 russh 管理器
     pub ssh_terminal_creation_lock: Mutex<()>,
 }
 
@@ -729,20 +731,20 @@ async fn ssh_connect_direct(
     println!("  Password Length: {}", password.len());
     println!("  Password (masked): {}***", if password.len() > 3 { &password[..3] } else { "" });
     
-    let mut manager = state.ssh_manager.lock().unwrap();
-    let result = manager.connect(&host, port, &username, &password);
+    let manager = state.ssh_manager.lock().unwrap();
+    let result = manager.connect(&host, port, &username, Some(&password), None);
     
     match &result {
         Ok(_) => println!("✅ [Tauri] SSH 连接成功"),
         Err(e) => println!("❌ [Tauri] SSH 连接失败: {}", e),
     }
     
-    result.map_err(|e| e.to_string())
+    result.map(|_| ()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 async fn ssh_disconnect_direct(state: State<'_, AppState>) -> Result<(), String> {
-    let mut manager = state.ssh_manager.lock().unwrap();
+    let manager = state.ssh_manager.lock().unwrap();
     manager.disconnect().map_err(|e| e.to_string())
 }
 
@@ -751,7 +753,7 @@ async fn ssh_execute_command_direct(
     command: String,
     username: Option<String>,
     state: State<'_, AppState>,
-) -> Result<ssh_manager::TerminalOutput, String> {
+) -> Result<ssh_manager_russh::TerminalOutput, String> {
     let start_time = std::time::Instant::now();
     //println!("[PERF] 右键菜单命令执行开始: \"{}\" 时间: {:?}", command, start_time);
 
@@ -767,7 +769,7 @@ async fn ssh_execute_command_direct(
 async fn ssh_execute_dashboard_command_direct(
     command: String,
     state: State<'_, AppState>,
-) -> Result<ssh_manager::TerminalOutput, String> {
+) -> Result<ssh_manager_russh::TerminalOutput, String> {
     let start_time = std::time::Instant::now();
     //println!("[PERF] 仪表盘命令执行开始: \"{}\" 时间: {:?}", command, start_time);
 
@@ -783,7 +785,7 @@ async fn ssh_execute_emergency_command_direct(
     command: String,
     username: Option<String>,
     state: State<'_, AppState>,
-) -> Result<ssh_manager::TerminalOutput, String> {
+) -> Result<ssh_manager_russh::TerminalOutput, String> {
     let _start_time = std::time::Instant::now();
     //println!("[PERF] 应急响应命令执行开始: \"{}\" 账号: {:?} 时间: {:?}", command, username, _start_time);
 
@@ -803,7 +805,7 @@ async fn ssh_execute_emergency_command_direct(
 async fn execute_detection_command(
     command: String,
     state: State<'_, AppState>,
-) -> Result<ssh_manager::TerminalOutput, String> {
+) -> Result<ssh_manager_russh::TerminalOutput, String> {
     println!("🤖 [AI命令执行] 开始执行: {}", command);
     
     let mut manager = state.ssh_manager.lock().unwrap();
@@ -1273,16 +1275,16 @@ async fn ssh_create_terminal_session(
     // 获取终端创建锁，确保原子性
     let _creation_lock = state.ssh_terminal_creation_lock.lock().unwrap();
 
-    let mut manager = state.ssh_manager.lock().unwrap();
+    let manager = state.ssh_manager.lock().unwrap();
 
     if !manager.is_connected() {
         return Err("没有活动的 SSH 连接".to_string());
     }
 
-    match manager.create_terminal_session(window, &terminal_id, cols, rows) {
-        Ok(session_id) => {
-            println!("✅ 创建终端会话成功: {}", session_id);
-            Ok(session_id)
+    match manager.create_terminal_session(window, &terminal_id, cols as u32, rows as u32) {
+        Ok(_) => {
+            println!("✅ 创建终端会话成功: {}", terminal_id);
+            Ok(terminal_id)
         }
         Err(e) => {
             println!("❌ 创建终端会话失败: {}", e);
@@ -1297,7 +1299,7 @@ async fn ssh_close_terminal_session(
     terminal_id: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let mut manager = state.ssh_manager.lock().unwrap();
+    let manager = state.ssh_manager.lock().unwrap();
 
     match manager.close_terminal_session(&terminal_id) {
         Ok(_) => {
@@ -1316,12 +1318,12 @@ async fn ssh_close_terminal_session(
 async fn ssh_close_all_terminal_sessions(
     state: State<'_, AppState>,
 ) -> Result<usize, String> {
-    let mut manager = state.ssh_manager.lock().unwrap();
+    let manager = state.ssh_manager.lock().unwrap();
 
     match manager.close_all_terminal_sessions() {
-        Ok(count) => {
-            println!("✅ 关闭所有终端会话成功，共 {} 个", count);
-            Ok(count)
+        Ok(_) => {
+            println!("✅ 关闭所有终端会话成功");
+            Ok(0) // Return 0 since we don't track count in russh impl
         }
         Err(e) => {
             println!("❌ 关闭所有终端会话失败: {}", e);
@@ -1337,7 +1339,7 @@ async fn ssh_send_input(
     data: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let mut manager = state.ssh_manager.lock().unwrap();
+    let manager = state.ssh_manager.lock().unwrap();
 
     match manager.send_terminal_input(&terminal_id, data.as_bytes().to_vec()) {
         Ok(_) => Ok(()),
@@ -1355,7 +1357,7 @@ async fn ssh_get_completion(
     #[allow(unused_variables)] cursor_position: usize,
     state: State<'_, AppState>,
 ) -> Result<serde_json::Value, String> {
-    let mut manager = state.ssh_manager.lock().unwrap();
+    let manager = state.ssh_manager.lock().unwrap();
 
     // 基本的命令补全逻辑
     let words: Vec<&str> = input.split_whitespace().collect();
@@ -1433,7 +1435,7 @@ async fn ssh_get_completion(
 async fn sftp_list_files(
     path: String,
     state: State<'_, AppState>,
-) -> Result<Vec<ssh_manager::SftpFileInfo>, String> {
+) -> Result<Vec<ssh_manager_russh::SftpFileInfo>, String> {
     let mut manager = state.ssh_manager.lock().unwrap();
     manager.list_sftp_files(&path).map_err(|e| e.to_string())
 }
@@ -1443,15 +1445,29 @@ async fn sftp_read_file(
     max_bytes: Option<usize>,
     state: State<'_, AppState>,
 ) -> Result<String, String> {
-    let mut manager = state.ssh_manager.lock().unwrap();
-    manager
-        .read_sftp_file(&path, max_bytes)
-        .map_err(|e| e.to_string())
+    let manager = state.ssh_manager.lock().unwrap();
+    let content = manager
+        .read_sftp_file(&path)
+        .map_err(|e| e.to_string())?;
+    
+    // Apply max_bytes limit if specified
+    let limited_content = if let Some(max) = max_bytes {
+        if content.len() > max {
+            content[..max].to_vec()
+        } else {
+            content
+        }
+    } else {
+        content
+    };
+    
+    String::from_utf8(limited_content)
+        .map_err(|e| format!("Failed to decode file as UTF-8: {}", e))
 }
 
 #[tauri::command]
 async fn sftp_chmod(path: String, mode: u32, state: State<'_, AppState>) -> Result<(), String> {
-    let mut manager = state.ssh_manager.lock().unwrap();
+    let manager = state.ssh_manager.lock().unwrap();
     manager.chmod_sftp(&path, mode).map_err(|e| e.to_string())
 }
 
@@ -1459,8 +1475,8 @@ async fn sftp_chmod(path: String, mode: u32, state: State<'_, AppState>) -> Resu
 async fn sftp_get_file_details(
     path: String,
     state: State<'_, AppState>,
-) -> Result<ssh_manager::SftpFileDetails, String> {
-    let mut manager = state.ssh_manager.lock().unwrap();
+) -> Result<ssh_manager_russh::SftpFileDetails, String> {
+    let manager = state.ssh_manager.lock().unwrap();
     manager.get_file_details(&path).map_err(|e| e.to_string())
 }
 
@@ -1468,7 +1484,7 @@ async fn sftp_get_file_details(
 async fn get_bash_environment_info(
     state: State<'_, AppState>,
 ) -> Result<types::BashEnvironmentInfo, String> {
-    let mut manager = state.ssh_manager.lock().unwrap();
+    let manager = state.ssh_manager.lock().unwrap();
     manager
         .get_bash_environment_info()
         .map_err(|e| e.to_string())
@@ -1479,7 +1495,7 @@ async fn get_command_completion(
     input: String,
     state: State<'_, AppState>,
 ) -> Result<types::CommandCompletion, String> {
-    let mut manager = state.ssh_manager.lock().unwrap();
+    let manager = state.ssh_manager.lock().unwrap();
     manager
         .get_command_completion(&input)
         .map_err(|e| e.to_string())
@@ -1490,9 +1506,9 @@ async fn sftp_write_file(
     content: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let mut manager = state.ssh_manager.lock().unwrap();
+    let manager = state.ssh_manager.lock().unwrap();
     manager
-        .write_sftp_file(&path, &content)
+        .write_sftp_file(&path, content.as_bytes())
         .map_err(|e| e.to_string())
 }
 #[tauri::command]
@@ -1502,7 +1518,7 @@ async fn sftp_compress(
     format: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let mut manager = state.ssh_manager.lock().unwrap();
+    let manager = state.ssh_manager.lock().unwrap();
     manager
         .compress_file(&source_path, &target_path, &format)
         .map_err(|e| e.to_string())
@@ -1512,12 +1528,12 @@ async fn sftp_compress(
 async fn sftp_extract(
     archive_path: String,
     target_dir: String,
-    overwrite: bool,
+    _overwrite: bool,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let mut manager = state.ssh_manager.lock().unwrap();
+    let manager = state.ssh_manager.lock().unwrap();
     manager
-        .extract_file(&archive_path, &target_dir, overwrite)
+        .extract_file(&archive_path, &target_dir)
         .map_err(|e| e.to_string())
 }
 #[tauri::command]
@@ -1526,7 +1542,7 @@ async fn sftp_upload(
     remote_path: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let mut manager = state.ssh_manager.lock().unwrap();
+    let manager = state.ssh_manager.lock().unwrap();
     manager
         .upload_file(&local_path, &remote_path)
         .map_err(|e| e.to_string())
@@ -1538,7 +1554,7 @@ async fn sftp_download(
     local_path: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let mut manager = state.ssh_manager.lock().unwrap();
+    let manager = state.ssh_manager.lock().unwrap();
     manager
         .download_file(&remote_path, &local_path)
         .map_err(|e| e.to_string())
@@ -1549,7 +1565,7 @@ async fn sftp_create_directory(
     remote_path: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let mut manager = state.ssh_manager.lock().unwrap();
+    let manager = state.ssh_manager.lock().unwrap();
     manager
         .create_directory(&remote_path)
         .map_err(|e| e.to_string())
@@ -1576,9 +1592,9 @@ async fn save_temp_file(file_name: String, data: Vec<u8>) -> Result<String, Stri
 #[tauri::command]
 async fn ssh_get_connection_status(
     state: State<'_, AppState>,
-) -> Result<Option<ssh_manager::SSHConnectionStatus>, String> {
+) -> Result<Option<ssh_manager_russh::SSHConnectionStatus>, String> {
     let manager = state.ssh_manager.lock().unwrap();
-    let status = manager.get_connection_status().cloned();
+    let status = manager.get_connection_status();
     //println!("🔍 前端请求SSH连接状态: {:?}", status);
     Ok(status)
 }
@@ -1649,7 +1665,7 @@ async fn docker_exec_command(
     command: String,
     shell: Option<String>,
     state: State<'_, AppState>,
-) -> Result<ssh_manager::TerminalOutput, String> {
+) -> Result<ssh_manager_russh::TerminalOutput, String> {
     let mut ssh = state.ssh_manager.lock().unwrap();
     let manager = docker_manager::DockerManager::new();
     let shell = shell.unwrap_or_else(|| "sh".to_string());
@@ -1941,7 +1957,7 @@ pub fn run() {
     let ssh_connection_manager =
         ssh_connection_manager::SSHConnectionManager::new().expect("初始化SSH连接管理器失败");
     let ssh_client = ssh_client::SSHClient::new();
-    let ssh_manager = ssh_manager::SSHManager::new();
+    let ssh_manager = ssh_manager_russh::SSHManagerRussh::new();
 
     let app_state = AppState {
         settings: Mutex::new(app_settings),
